@@ -18,9 +18,8 @@ Rails.application.routes.draw do
     get '/notes', to: 'notes#index', as: 'list_user_notes'
     get '/notes/:id', to: 'notes#show'
     delete '/notes/:id', to: 'notes#destroy'
-    post '/notes/validate', to: 'notes#validate' # Added from new code
     put '/notes/:id/autosave', to: 'notes#autosave'
-    put '/notes/:id', to: 'notes#update', as: 'update_note' # Preserve the 'as' option from existing code
+    put '/notes/:id', to: 'notes#update', as: 'update_note'
     # ... other routes within the API namespace ...
   end
 
