@@ -28,29 +28,42 @@ module Api
       end
     end
 
-    # PATCH/PUT /api/notes/:note_id
+    # PATCH/PUT /api/notes/:id
     def update
-      note_id = params[:note_id]
-      title = params[:title]
-      content = params[:content]
+      note_id = params[:id] || params[:note_id]
+      title = params[:note].try(:[], :title) || params[:title]
+      content = params[:note].try(:[], :content) || params[:content]
 
-      if title.blank? || content.blank?
-        return error_response({ message: 'Title and content cannot be empty' }, :unprocessable_entity)
+      if note_id.blank? || !note_id.to_s.match?(/\A\d+\z/)
+        return render json: { error: "Note ID must be a number." }, status: :bad_request
       end
 
-      note = NoteService::Update.update_note(note_id, title, content, current_resource_owner)
+      note_id = note_id.to_i
 
-      if note
+      if title.present? && title.length > 200
+        return render json: { error: "You cannot input more than 200 characters." }, status: :bad_request
+      end
+
+      if content.blank?
+        return render json: { error: "The content is required." }, status: :bad_request
+      end
+
+      update_service = NotesService::Update.new(note_id, current_resource_owner.id, title, content)
+      result = update_service.call
+
+      if result[:note_id]
+        note = Note.find(result[:note_id])
         render json: {
-          message: 'Note updated successfully',
+          status: 200,
           note: {
             id: note.id,
             title: note.title,
             content: note.content,
-            created_at: note.created_at,
-            updated_at: note.updated_at
+            updated_at: note.updated_at.iso8601
           }
         }, status: :ok
+      elsif result[:error] =~ /not found/
+        render json: { error: result[:error] }, status: :not_found
       else
         error_response({ message: 'Note not found or not owned by user' }, :not_found)
       end
