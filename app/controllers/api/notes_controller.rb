@@ -1,8 +1,7 @@
 module Api
   class NotesController < Api::BaseController
     include NotesService
-    include Pundit::Authorization
-    before_action :doorkeeper_authorize!
+    before_action :doorkeeper_authorize!, only: [:search, :index, :show, :update, :destroy, :autosave]
     before_action :validate_user_and_params, only: :index
     require_relative '../../services/notes_service/index'
     require 'app/models/note.rb'
@@ -17,19 +16,20 @@ module Api
     # GET /api/notes/:note_id
     def show
       begin
-        note_id = params[:note_id]
+        note_id = params[:note_id] || params[:id]
         note = Note.find(note_id)
-        if note
-          render json: {
-            id: note.id,
-            title: note.title,
-            content: note.content,
-            created_at: note.created_at,
-            updated_at: note.updated_at
-          }, status: :ok
-        end
+        authorize note, policy_class: NotePolicy if defined?(authorize)
+
+        render json: {
+          status: 200,
+          note: note.as_json(only: [:id, :title, :content, :created_at, :updated_at])
+        }, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: 'Note not found' }, status: :not_found
+      rescue Pundit::NotAuthorizedError
+        render json: { error: 'Forbidden' }, status: :forbidden
+      rescue StandardError => e
+        render json: { error: e.message }, status: :internal_server_error
       end
     end
 
@@ -61,31 +61,6 @@ module Api
       end
     end
 
-    # POST /api/notes
-    def create
-      title = params[:title]
-      content = params[:content]
-      user_id = params[:user_id]
-
-      if title.blank?
-        return error_response({ message: 'The title is required.' }, :unprocessable_entity)
-      elsif title.length > 200
-        return error_response({ message: 'The title cannot exceed 200 characters.' }, :unprocessable_entity)
-      elsif content.blank?
-        return error_response({ message: 'The content is required.' }, :unprocessable_entity)
-      elsif user_id.blank? || !user_id.is_a?(Integer)
-        return error_response({ message: 'User ID is required and must be an integer.' }, :unprocessable_entity)
-      end
-
-      result = NotesService::Create.new(user_id: user_id, title: title, content: content).call
-
-      if result[:success]
-        render json: { status: 201, note: result[:note] }, status: :created
-      else
-        error_response({ message: result[:message] }, :unprocessable_entity)
-      end
-    end
-
     # DELETE /api/notes/:id
     def destroy
       note_id = params[:id]
@@ -97,7 +72,7 @@ module Api
 
       begin
         note = Note.find(note_id)
-        authorize note, policy_class: NotePolicy
+        authorize note, policy_class: NotePolicy if defined?(authorize)
 
         result = NoteService::Delete.new.execute(note_id: note_id, user: current_user)
         if result[:message]
@@ -118,51 +93,14 @@ module Api
 
     # GET /api/notes/search
     def search
-      keyword = params[:keyword]
-      date = params[:date]
-      page = params[:page].to_i
-      limit = params[:limit].to_i
-
-      if keyword.present? && keyword.length > 200
-        return render json: { error: "Keyword cannot exceed 200 characters." }, status: :bad_request
-      end
-
-      begin
-        Date.parse(date) if date.present?
-      rescue ArgumentError
-        return render json: { error: "Wrong date format." }, status: :bad_request
-      end
-
-      unless User.exists?(params[:user_id])
-        return render json: { error: "User not found." }, status: :bad_request
-      end
-
-      unless page.is_a?(Numeric) && page > 0
-        return render json: { error: "Page must be a number and greater than 0." }, status: :bad_request
-      end
-
-      unless limit.is_a?(Numeric)
-        return render json: { error: "Limit must be a number." }, status: :bad_request
-      end
-
-      begin
-        search_service = NotesService::Search.new(user_id: current_resource_owner.id, search_query: keyword)
-        notes = search_service.execute
-        total_items = notes.size
-        total_pages = (total_items / limit.to_f).ceil
-
-        paginated_notes = notes.paginate(page: page, per_page: limit)
-
-        render json: {
-          status: 200,
-          notes: paginated_notes,
-          total_pages: total_pages,
-          limit: limit,
-          page: page
-        }, status: :ok
-      rescue StandardError => e
-        render json: { error: e.message }, status: :internal_server_error
-      end
+      search_params
+      notes_service = NotesService::Search.new(user_id: params[:user_id], search_query: params[:keyword], page: params[:page], per_page: params[:limit])
+      result = notes_service.execute
+      render json: result, status: :ok
+    rescue ActiveRecord::RecordNotFound
+      render json: { error: 'Note not found' }, status: :not_found
+    rescue Pundit::NotAuthorizedError
+      render json: { error: 'User does not have permission to access the resource.' }, status: :forbidden
     end
 
     # POST /api/notes/autosave
@@ -170,13 +108,13 @@ module Api
       note_id = params[:id]
       content = params[:content]
 
-      return render json: { error: "Wrong format." }, status: :bad_request unless note_id.is_a?(Integer)
+      return render json: { error: "Wrong format." }, status: :bad_request unless note_id.to_s.match?(/\A\d+\z/)
       return render json: { error: "The content is required." }, status: :bad_request if content.blank?
 
       note = Note.find_by(id: note_id)
       return render json: { error: "Note not found." }, status: :not_found unless note
 
-      authorize note, policy_class: NotePolicy
+      authorize note, policy_class: NotePolicy if defined?(authorize)
 
       autosave_service = NotesService::AutoSave.new(current_resource_owner.id, '', content, note_id)
       result = autosave_service.call
@@ -227,6 +165,18 @@ module Api
         limit: limit,
         page: page
       }, status: :ok
+    end
+
+    def search_params
+      if params[:keyword].length > 200
+        render json: { error: "Keyword cannot exceed 200 characters." }, status: :unprocessable_entity
+      elsif params[:date].present? && !DateTime.strptime(params[:date], '%Y-%m-%dT%H:%M:%SZ') rescue nil
+        render json: { error: "Wrong date format." }, status: :unprocessable_entity
+      elsif params[:user_id].blank?
+        render json: { error: "User ID is required." }, status: :unprocessable_entity
+      elsif params[:user_id].to_s.match?(/\A\d+\z/).nil?
+        render json: { error: "User ID must be an integer." }, status: :unprocessable_entity
+      end
     end
 
     def error_response(error_hash, status)
