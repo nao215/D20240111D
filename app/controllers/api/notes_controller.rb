@@ -1,71 +1,35 @@
 module Api
   class NotesController < Api::BaseController
     include NotesService
+    include Pundit::Authorization
     before_action :doorkeeper_authorize!
+    before_action :validate_user_and_params, only: :index
     require_relative '../../services/notes_service/index'
     require 'app/models/note.rb'
     require 'app/policies/note_policy.rb'
 
     # GET /api/notes
     def index
-      user_id = params[:user_id].to_i
-      page = params[:page].to_i
-      limit = params[:limit].to_i
-
-      unless User.exists?(user_id)
-        return render json: { error: 'User not found.' }, status: :bad_request
-      end
-
-      unless page.is_a?(Numeric) && page > 0
-        return render json: { error: 'Page must be a number and greater than 0.' }, status: :bad_request
-      end
-
-      unless limit.is_a?(Numeric)
-        return render json: { error: 'Limit must be a number.' }, status: :bad_request
-      end
-
-      begin
-        notes_service = NotesService::Index.new(user_id, page: page, per_page: limit)
-        result = notes_service.call
-
-        if result[:error]
-          render json: { error: result[:error] }, status: :internal_server_error
-        else
-          render json: {
-            status: 200,
-            notes: result[:notes].as_json(only: [:id, :user_id, :title, :content, :created_at, :updated_at]),
-            total_pages: result[:total_pages],
-            limit: limit,
-            page: page
-          }, status: :ok
-        end
-      rescue StandardError => e
-        render json: { error: e.message }, status: :internal_server_error
-      end
+      # The actual listing of notes is now handled in the validate_user_and_params before_action
+      # This block is now empty because the logic has been moved to the validate_user_and_params method
     end
 
     # GET /api/notes/:note_id
     def show
       begin
-        note_id = params[:id]
-        if note_id.to_i.to_s == note_id
-          note_service = NotesService::Show.new(note_id)
-          note = note_service.execute
-          authorize note, policy_class: NotePolicy
-
+        note_id = params[:note_id]
+        note = Note.find(note_id)
+        if note
           render json: {
-            status: 200,
-            note: note
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            created_at: note.created_at,
+            updated_at: note.updated_at
           }, status: :ok
-        else
-          render json: { error: "Note ID must be a number." }, status: :bad_request
         end
       rescue ActiveRecord::RecordNotFound
-        render json: { error: 'Note not found.' }, status: :not_found
-      rescue Pundit::NotAuthorizedError
-        render json: { error: 'Forbidden' }, status: :forbidden
-      rescue StandardError => e
-        render json: { error: e.message }, status: :internal_server_error
+        render json: { error: 'Note not found' }, status: :not_found
       end
     end
 
@@ -97,21 +61,56 @@ module Api
       end
     end
 
+    # POST /api/notes
+    def create
+      title = params[:title]
+      content = params[:content]
+      user_id = params[:user_id]
+
+      if title.blank?
+        return error_response({ message: 'The title is required.' }, :unprocessable_entity)
+      elsif title.length > 200
+        return error_response({ message: 'The title cannot exceed 200 characters.' }, :unprocessable_entity)
+      elsif content.blank?
+        return error_response({ message: 'The content is required.' }, :unprocessable_entity)
+      elsif user_id.blank? || !user_id.is_a?(Integer)
+        return error_response({ message: 'User ID is required and must be an integer.' }, :unprocessable_entity)
+      end
+
+      result = NotesService::Create.new(user_id: user_id, title: title, content: content).call
+
+      if result[:success]
+        render json: { status: 201, note: result[:note] }, status: :created
+      else
+        error_response({ message: result[:message] }, :unprocessable_entity)
+      end
+    end
+
     # DELETE /api/notes/:id
     def destroy
-      note_id = params[:id].to_i
+      note_id = params[:id]
+      unless note_id.to_s.match?(/\A\d+\z/)
+        return render json: { error: 'Note ID must be a number.' }, status: :bad_request
+      end
 
-      return render json: { error: "Wrong format." }, status: :bad_request unless note_id.is_a?(Integer)
+      note_id = note_id.to_i
 
       begin
-        deleted_note = NoteService::Delete.new(current_user, note_id).delete_note
-        if deleted_note
-          render json: { message: I18n.t('notes.delete.success') }, status: :ok
+        note = Note.find(note_id)
+        authorize note, policy_class: NotePolicy
+
+        result = NoteService::Delete.new.execute(note_id: note_id, user: current_user)
+        if result[:message]
+          render json: { status: 200, message: result[:message] }, status: :ok
+        elsif result[:error]
+          render json: { error: result[:error] }, status: :not_found
         else
-          render json: { error: I18n.t('notes.delete.failure') }, status: :unprocessable_entity
+          render json: { error: 'Note not found.' }, status: :not_found
         end
       rescue ActiveRecord::RecordNotFound => e
         render json: { error: e.message }, status: :not_found
+      rescue Pundit::NotAuthorizedError
+        render json: { error: 'User does not have permission to access the resource.' }, status: :forbidden
       rescue StandardError => e
         render json: { error: e.message }, status: :internal_server_error
       end
@@ -198,6 +197,37 @@ module Api
     end
 
     private
+
+    def validate_user_and_params
+      user_id = params[:user_id].to_i
+      page = params[:page].to_i
+      limit = params[:limit].to_i
+
+      unless User.exists?(user_id)
+        return render json: { error: 'User not found.' }, status: :bad_request
+      end
+
+      unless params[:page].match?(/^\d+$/) && page > 0
+        return render json: { error: 'Page must be greater than 0.' }, status: :bad_request
+      end
+
+      unless params[:limit].match?(/^\d+$/) && limit > 0
+        return render json: { error: 'Limit must be greater than 0.' }, status: :bad_request
+      end
+
+      notes_service = NotesService::Index.new(user_id, page: page, per_page: limit)
+      notes_service.call
+      notes = notes_service.notes
+      total_pages = notes_service.total_pages
+
+      render json: {
+        status: 200,
+        notes: notes.as_json(only: [:id, :title, :content, :created_at, :updated_at]),
+        total_pages: total_pages,
+        limit: limit,
+        page: page
+      }, status: :ok
+    end
 
     def error_response(error_hash, status)
       render json: error_hash, status: status
