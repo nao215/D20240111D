@@ -1,31 +1,55 @@
-# rubocop:disable Style/ClassAndModuleChildren
+# frozen_string_literal: true
+
 module NotesService
   class Create < BaseService
-    def call(user_id:, title:, content:, note_id: nil)
-      user = User.find_by(id: user_id)
-      return { error: 'User not found' } unless user
+    def initialize(user_id:, title:, content:, note_id: nil)
+      @user_id = user_id
+      @title = title
+      @content = content
+      @note_id = note_id
+    end
 
-      if note_id
-        note = user.notes.find_by(id: note_id)
-        return { error: 'Note not found' } unless note
+    def call
+      user = User.find_by(id: @user_id)
+      return { success: false, message: 'User not found' } unless user
 
-        if title.blank? || content.blank?
-          return { error: 'Title and content cannot be empty' }
-        end
+      if @title.blank? && @content.blank?
+        return { valid: false, message: 'Title and content are missing' }
+      elsif @title.blank?
+        return { valid: false, message: 'Title is missing' }
+      elsif @content.blank?
+        return { valid: false, message: 'Content is missing' }
+      end
 
-        note.update(title: title, content: content, updated_at: Time.current)
-        { note_id: note.id, message: 'Note updated successfully' }
+      if @note_id
+        note = user.notes.find_by(id: @note_id)
+        return { success: false, message: 'Note not found' } unless note
+
+        return { success: false, message: 'Title and content cannot be blank' } if @title.blank? || @content.blank?
+
+        note.update(title: @title, content: @content, updated_at: Time.current)
+        { success: true, note_id: note.id, message: 'Note updated successfully' }
       else
-        return { error: 'Title and content cannot be empty' } if title.blank? || content.blank?
+        note_id = @note_id || SecureRandom.uuid
+        timestamp = Time.current
 
-        note = user.notes.create(title: title, content: content)
-        if note.persisted?
-          { note_id: note.id, message: 'Note created successfully' }
+        note = Note.new(id: note_id, user_id: @user_id, title: @title, content: @content, created_at: timestamp, updated_at: timestamp)
+
+        policy = NotePolicy.new(user, note) # Assuming NotePolicy is the correct policy class to use
+        return { success: false, message: 'Not authorized to create note' } unless policy.create?
+
+        if note.save
+          { success: true, note_id: note.id, message: 'Note created successfully' }
         else
-          { error: note.errors.full_messages.join(', ') }
+          { success: false, message: note.errors.full_messages.join(', ') }
         end
       end
+    rescue StandardError => e
+      { success: false, message: e.message }
     end
+
+    private
+
+    attr_reader :user_id, :title, :content, :note_id
   end
 end
-# rubocop:enable Style/ClassAndModuleChildren

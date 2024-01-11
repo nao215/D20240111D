@@ -34,7 +34,10 @@ module NotesService
     end
 
     def validate_presence_of_title_and_content!
-      raise ActiveRecord::RecordInvalid, 'Title and content cannot be blank' if @title.blank? || @content.blank?
+      errors = []
+      errors << 'Title cannot be blank' if @title.blank?
+      errors << 'Content cannot be blank' if @content.blank?
+      raise ActiveRecord::RecordInvalid, errors.join(', ') unless errors.empty?
     end
   end
 end
