@@ -22,15 +22,14 @@ module NotesService
         note.update(title: @title, content: @content, updated_at: Time.current)
         { success: true, note_id: note.id, message: 'Note updated successfully' }
       else
-        # Merged the new code's timestamp variable with the existing code's note_id generation
+        return { success: false, message: 'Title and content cannot be blank' } if @title.blank? || @content.blank?
+
         note_id = @note_id || SecureRandom.uuid
         timestamp = Time.current
 
-        # Merged the new code's Note.new without id with the existing code's Note.new with id
         note = Note.new(id: note_id, user_id: @user_id, title: @title, content: @content, created_at: timestamp, updated_at: timestamp)
 
-        # Merged the policy check from both versions, preferring the new code's NotePolicy
-        policy = NotePolicy.new(user, note)
+        policy = NotePolicy.new(user, note) # Assuming NotePolicy is the correct policy class to use
         return { success: false, message: 'Not authorized to create note' } unless policy.create?
 
         if note.save
