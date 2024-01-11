@@ -47,19 +47,25 @@ module Api
     # GET /api/notes/:note_id
     def show
       begin
-        note_id = params[:note_id]
-        note = Note.find(note_id)
-        if note
+        note_id = params[:id]
+        if note_id.to_i.to_s == note_id
+          note_service = NotesService::Show.new(note_id)
+          note = note_service.execute
+          authorize note, policy_class: NotePolicy
+
           render json: {
-            id: note.id,
-            title: note.title,
-            content: note.content,
-            created_at: note.created_at,
-            updated_at: note.updated_at
+            status: 200,
+            note: note
           }, status: :ok
+        else
+          render json: { error: "Note ID must be a number." }, status: :bad_request
         end
       rescue ActiveRecord::RecordNotFound
-        render json: { error: 'Note not found' }, status: :not_found
+        render json: { error: 'Note not found.' }, status: :not_found
+      rescue Pundit::NotAuthorizedError
+        render json: { error: 'Forbidden' }, status: :forbidden
+      rescue StandardError => e
+        render json: { error: e.message }, status: :internal_server_error
       end
     end
 
