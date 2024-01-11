@@ -1,0 +1,11 @@
+p
+  = t('.greeting', recipient: @resource.email)
+
+p
+  = t('.message')
+
+p 
+  = t('.instruction')
+
+div
+  a>href="#{Rails.application.credentials.dig(:frontend_base_url)}/users/unlock?unlock_token=#{@token}" #{t('.action')}

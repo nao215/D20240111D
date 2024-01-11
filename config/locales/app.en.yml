@@ -1,0 +1,9 @@
+---
+en:
+  common:
+    errors:
+      unauthorized_error: Unauthorized
+      record_not_uniq_error: Record not uniq
+      token:
+        inactive: Your account is not activated yet
+        locked: Your account is locked

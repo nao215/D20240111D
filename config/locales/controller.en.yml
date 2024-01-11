@@ -1,0 +1,11 @@
+---
+en:
+  common:
+    '404': not found
+    '403': forbidden
+    '401': unauthorized
+    '500': internal server error
+    '422': unprocessable
+    '201': created
+    '200': success
+    '302': deleted

@@ -1,0 +1,64 @@
+{
+    "family": "rails",
+    "networkMode": "awsvpc",
+    "taskRoleArn": "arn:aws:iam::<<PLACEHOLDER>>:role/ecs_tasks_base_source_development",
+    "executionRoleArn": "arn:aws:iam::<<PLACEHOLDER>>:role/ecs_tasks_base_source_development",
+  
+    "cpu": "512",
+    "memory": "1024",
+   
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "containerDefinitions": [
+        {
+            "name": "rails",
+            "image": "<IMAGE1_NAME>",
+            "essential": true,
+            "command": ["bundle", "exec", "rails", "server", "-b", "0.0.0.0", "-p", "3000"],
+            "portMappings": [
+                {
+                    "protocol": "tcp",
+                    "containerPort": 3000,
+                    "hostPort": 3000
+                }
+            ],
+            "environment": [
+                { "name": "NODE_ENV", "value": "production" },
+                { "name": "RAILS_ENV", "value": "development" },
+                { "name": "RAILS_MAX_THREADS", "value" : "16" },
+                { "name": "TZ", "value": "Asia/Tokyo" }
+            ],
+            "secrets": [
+                  {
+                    "name": "BASE_SOURCE_DATABASE_HOST",
+                    "valueFrom": "arn:aws:ssm:ap-northeast-1:<<PLACEHOLDER>>:parameter/base_source_development/database_host"
+                  },
+                  {
+                    "name": "BASE_SOURCE_PASSWORD",
+                    "valueFrom": "arn:aws:ssm:ap-northeast-1:<<PLACEHOLDER>>:parameter/base_source_development/database_password"
+                  },
+                  {
+                    "name": "RAILS_MASTER_KEY",
+                    "valueFrom": "arn:aws:ssm:ap-northeast-1:<<PLACEHOLDER>>:parameter/base_source_development/rails_master_key"
+                  },
+                  {
+                    "name":  "REDIS_URL",
+                    "valueFrom": "arn:aws:ssm:ap-northeast-1:<<PLACEHOLDER>>:parameter/base_source_development/redis_address"
+                  },
+                  {
+                    "name": "GIT_TOKEN",
+                    "valueFrom": "arn:aws:ssm:ap-northeast-1:<<PLACEHOLDER>>:parameter/base_source_development/git_token"
+                  }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "base_source_development_ecs_web",
+                    "awslogs-region": "ap-northeast-1",
+                    "awslogs-stream-prefix": "base_source_development_rails"
+                }
+            }
+        }
+    ]
+}

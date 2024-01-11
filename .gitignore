@@ -1,0 +1,36 @@
+# Ignore OS, editor files
+.DS_Store
+.idea
+.keep
+*.rbc
+.generators
+
+# Ignore all logfiles and tempfiles.
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+/spec/tmp
+terraform.log
+
+# dotenv, dotenv-rails
+.env
+
+## Environment normalization:
+/.bundle
+/vendor/bundle
+
+## Ignore coverage files
+/coverage/
+
+# Ignore Byebug command history file.
+.byebug_history
+
+
+# Ignore uploaded files in development
+/storage/*
+!/storage/.keep
+/public/uploads
+
+# Ignore Rails credential keys
+/config/credentials/*

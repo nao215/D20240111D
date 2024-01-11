@@ -1,0 +1,27 @@
+---
+en:
+  activerecord:
+    errors:
+      messages:
+        blank: can't be blank
+        taken: has already been taken
+        too_long: is too long (maximum is %{count} characters)
+        too_short: is too short (minimum is %{count} characters)
+        wrong_length: is the wrong length (should be %{count} characters)
+        in: must be in %{count}
+        greater_than: must be greater than %{count}
+        greater_than_or_equal_to: must be greater than or equal to %{count}
+        less_than: must be less than %{count}
+        less_than_or_equal_to: must be less than or equal to %{count}
+        other_than: must be other than %{count}
+        not_an_integer: must be an integer
+        file_content_type_invalid: has an invalid content type
+        file_size_out_of_range: size %{file_size} is not between required range
+        file_limit_out_of_range: total number is out of range
+        date_in_past: must be before the date today
+        date_in_future: must be after the date today
+        datetime_in_past: must be before the date and time today
+        datetime_in_future: must be after the date and time today
+        invalid: is invalid
+        date_type: must be a valid date
+        datetime_type: must be a valid date and time
