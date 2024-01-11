@@ -1,15 +1,29 @@
 module Api
   class NotesController < Api::BaseController
+    include NotesService
     before_action :doorkeeper_authorize!
-    before_action :validate_user_and_params, only: :index
 
-    # GET /api/notes
     def index
-      # The actual listing of notes is now handled in the validate_user_and_params before_action
-      # This block is now empty because the logic has been moved to the validate_user_and_params method
+      user_id = params[:user_id]
+
+      return render json: { error: I18n.t('common.errors.unauthorized_error') }, status: :unauthorized unless user_id
+
+      begin
+        notes_service = NotesService::Index.new(user_id)
+        notes = notes_service.list_user_notes
+        total_items = notes.size
+        total_pages = (total_items / notes_service.per_page.to_f).ceil
+
+        render json: {
+          notes: notes.as_json(only: [:id, :title, :content, :created_at, :updated_at]),
+          total_items: total_items,
+          total_pages: total_pages
+        }, status: :ok
+      rescue StandardError => e
+        render json: { error: e.message }, status: :internal_server_error
+      end
     end
 
-    # GET /api/notes/:note_id
     def show
       begin
         note_id = params[:note_id]
@@ -28,7 +42,6 @@ module Api
       end
     end
 
-    # PATCH/PUT /api/notes/:note_id
     def update
       note_id = params[:note_id]
       title = params[:title]
@@ -56,55 +69,58 @@ module Api
       end
     end
 
-    # DELETE /api/notes/:id
     def destroy
-      note_id = params[:id]
-      begin
-        deleted_note = NoteService::Delete.new(current_user, note_id).delete_note
-        if deleted_note
-          render json: { message: I18n.t('notes.delete.success') }, status: :ok
+      note_id = params[:id].to_i
+
+      return render json: { error: "Wrong format." }, status: :bad_request unless note_id.is_a?(Integer)
+
+      result = NotesService::Delete.new.call(note_id: note_id, user_id: current_resource_owner.id)
+
+      if result[:message]
+        render json: { status: 200, message: result[:message] }, status: :ok
+      elsif result[:error]
+        case result[:error]
+        when I18n.t('notes.delete.not_authorized')
+          render json: { error: result[:error] }, status: :unauthorized
+        when I18n.t('notes.delete.not_found')
+          render json: { error: result[:error] }, status: :not_found
         else
-          render json: { error: I18n.t('notes.delete.failure') }, status: :unprocessable_entity
+          render json: { error: result[:error] }, status: :internal_server_error
         end
-      rescue ActiveRecord::RecordNotFound => e
-        render json: { error: e.message }, status: :not_found
-      rescue StandardError => e
-        render json: { error: e.message }, status: :internal_server_error
+      end
+    end
+
+    def autosave
+      note_id = params[:id]
+      content = params[:content]
+
+      return render json: { error: "Wrong format." }, status: :bad_request unless note_id.is_a?(Integer)
+      return render json: { error: "The content is required." }, status: :bad_request if content.blank?
+
+      note = Note.find_by(id: note_id)
+      return render json: { error: "Note not found." }, status: :not_found unless note
+
+      authorize note, policy_class: NotePolicy
+
+      autosave_service = NotesService::AutoSave.new(current_resource_owner.id, '', content, note_id)
+      result = autosave_service.call
+
+      if result[:error]
+        render json: { error: result[:error] }, status: :unprocessable_entity
+      else
+        note.reload
+        render json: {
+          status: 200,
+          note: {
+            id: note.id,
+            content: note.content,
+            updated_at: note.updated_at
+          }
+        }, status: :ok
       end
     end
 
     private
-
-    def validate_user_and_params
-      user_id = params[:user_id].to_i
-      page = params[:page].to_i
-      limit = params[:limit].to_i
-
-      unless User.exists?(user_id)
-        return render json: { error: 'User not found.' }, status: :bad_request
-      end
-
-      unless params[:page].match?(/^\d+$/) && page > 0
-        return render json: { error: 'Page must be greater than 0.' }, status: :bad_request
-      end
-
-      unless params[:limit].match?(/^\d+$/)
-        return render json: { error: 'Wrong format.' }, status: :bad_request
-      end
-
-      notes_service = NotesService::Index.new(user_id, page: page, per_page: limit)
-      notes_service.call
-      notes = notes_service.notes
-      total_pages = notes_service.total_pages
-
-      render json: {
-        status: 200,
-        notes: notes,
-        total_pages: total_pages,
-        limit: limit,
-        page: page
-      }, status: :ok
-    end
 
     def error_response(error_hash, status)
       render json: error_hash, status: status
