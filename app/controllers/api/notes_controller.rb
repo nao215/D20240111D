@@ -23,6 +23,24 @@ module Api
       end
     end
 
+    def show
+      begin
+        note_id = params[:note_id]
+        note = Note.find(note_id)
+        if note
+          render json: {
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            created_at: note.created_at,
+            updated_at: note.updated_at
+          }, status: :ok
+        end
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: 'Note not found' }, status: :not_found
+      end
+    end
+
     def update
       note_id = params[:note_id]
       title = params[:title]
@@ -44,10 +62,46 @@ module Api
             created_at: note.created_at,
             updated_at: note.updated_at
           }
-        }
+        }, status: :ok
       else
         error_response({ message: 'Note not found or not owned by user' }, :not_found)
       end
+    end
+
+    def autosave
+      note_id = params[:id]
+      content = params[:content]
+
+      return render json: { error: "Wrong format." }, status: :bad_request unless note_id.is_a?(Integer)
+      return render json: { error: "The content is required." }, status: :bad_request if content.blank?
+
+      note = Note.find_by(id: note_id)
+      return render json: { error: "Note not found." }, status: :not_found unless note
+
+      authorize note, policy_class: NotePolicy
+
+      autosave_service = NotesService::AutoSave.new(current_resource_owner.id, '', content, note_id)
+      result = autosave_service.call
+
+      if result[:error]
+        render json: { error: result[:error] }, status: :unprocessable_entity
+      else
+        note.reload
+        render json: {
+          status: 200,
+          note: {
+            id: note.id,
+            content: note.content,
+            updated_at: note.updated_at
+          }
+        }, status: :ok
+      end
+    end
+
+    private
+
+    def error_response(error_hash, status)
+      render json: error_hash, status: status
     end
   end
 end
