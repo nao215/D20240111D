@@ -7,8 +7,10 @@ Rails.application.routes.draw do
   # Swagger documentation routes
   mount Rswag::Ui::Engine => '/api-docs'
   mount Rswag::Api::Engine => '/api-docs'
-  get '/health' => 'pages#health_check'
   get 'api-docs/v1/swagger.yaml' => 'swagger#yaml'
+
+  # Health check route
+  get '/health' => 'pages#health_check'
 
   # API namespace to group related routes together
   namespace :api do
@@ -20,10 +22,7 @@ Rails.application.routes.draw do
     delete '/notes/:id', to: 'notes#destroy'
     put '/notes/:id/autosave', to: 'notes#autosave'
     put '/notes/:id', to: 'notes#update', as: 'update_note'
-    # ... other routes within the API namespace ...
   end
 
-  # Additional routes outside the API namespace
-  get '/api/sessions/validate', to: 'sessions#validate'
   # ... other routes that might exist in the application ...
 end
