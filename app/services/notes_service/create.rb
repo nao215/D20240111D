@@ -13,8 +13,16 @@ module NotesService
       user = User.find_by(id: @user_id)
       return { success: false, message: 'User not found' } unless user
 
+      if @title.blank? && @content.blank?
+        return { valid: false, message: 'Title and content are missing' }
+      elsif @title.blank?
+        return { valid: false, message: 'Title is missing' }
+      elsif @content.blank?
+        return { valid: false, message: 'Content is missing' }
+      end
+
       if @note_id
-        note = Note.find_by(id: @note_id, user_id: @user_id)
+        note = user.notes.find_by(id: @note_id)
         return { success: false, message: 'Note not found' } unless note
 
         return { success: false, message: 'Title and content cannot be blank' } if @title.blank? || @content.blank?
@@ -22,8 +30,6 @@ module NotesService
         note.update(title: @title, content: @content, updated_at: Time.current)
         { success: true, note_id: note.id, message: 'Note updated successfully' }
       else
-        return { success: false, message: 'Title and content cannot be blank' } if @title.blank? || @content.blank?
-
         note_id = @note_id || SecureRandom.uuid
         timestamp = Time.current
 
