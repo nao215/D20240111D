@@ -21,7 +21,7 @@ Rails.application.routes.draw do
     get '/notes/:id', to: 'notes#show'
     delete '/notes/:id', to: 'notes#destroy'
     put '/notes/:id/autosave', to: 'notes#autosave'
-    put '/notes/:id', to: 'notes#update'
+    put '/notes/:id', to: 'notes#update', as: 'update_note'
   end
 
   # ... other routes that might exist in the application ...
