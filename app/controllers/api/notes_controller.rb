@@ -1,7 +1,8 @@
 module Api
   class NotesController < Api::BaseController
     include NotesService
-    before_action :doorkeeper_authorize!
+    before_action :doorkeeper_authorize!, except: [:show, :search, :autosave]
+    before_action :doorkeeper_authorize!, only: [:create]
 
     # GET /api/notes
     def index
@@ -70,6 +71,35 @@ module Api
       else
         error_response({ message: 'Note not found or not owned by user' }, :not_found)
       end
+    end
+
+    # POST /api/notes
+    def create
+      user_id = params[:user_id]
+      title = params[:title]
+      content = params[:content]
+
+      # Validate parameters
+      return render json: { error: "User not found." }, status: :bad_request unless User.exists?(user_id)
+      return render json: { error: "The title is required." }, status: :bad_request if title.blank?
+      return render json: { error: "The content is required." }, status: :bad_request if content.blank?
+
+      # Create note
+      notes_service = NotesService::Create.new(user_id: user_id, title: title, content: content)
+      result = notes_service.call
+
+      # Handle response
+      if result[:success]
+        note = Note.find(result[:note_id])
+        render json: {
+          status: 201,
+          note: note.as_json(only: [:id, :user_id, :title, :content, :created_at, :updated_at])
+        }, status: :created
+      else
+        render json: { error: result[:message] }, status: :bad_request
+      end
+    rescue StandardError => e
+      render json: { error: e.message }, status: :internal_server_error
     end
 
     # DELETE /api/notes/:id
