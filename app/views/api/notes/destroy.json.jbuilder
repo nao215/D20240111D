@@ -1,3 +1,5 @@
+json.status 200
+json.message "Note has been successfully deleted."
 <?php
 namespace App\Http\Controllers;
 

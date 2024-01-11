@@ -113,7 +113,7 @@ module Api
         note = Note.find(note_id)
         authorize note, policy_class: NotePolicy
 
-        result = NoteService::Delete.new.execute(note_id: note_id, user: current_user)
+        result = NoteService::Delete.new.execute(note_id: note_id, user: current_resource_owner)
         if result[:message]
           render json: { status: 200, message: result[:message] }, status: :ok
         elsif result[:error]
