@@ -3,6 +3,8 @@ module Api
     include Pundit::Authorization
     before_action :doorkeeper_authorize!
     before_action :validate_user_and_params, only: :index
+    before_action :doorkeeper_authorize!, only: [:validate]
+    include NotesService
     require_relative '../../services/notes_service/index'
     require 'app/models/note.rb'
     require 'app/policies/note_policy.rb'
@@ -103,12 +105,9 @@ module Api
 
     # DELETE /api/notes/:id
     def destroy
-      note_id = params[:id]
-      unless note_id.to_s.match?(/\A\d+\z/)
-        return render json: { error: 'Note ID must be a number.' }, status: :bad_request
-      end
+      note_id = params[:id].to_i
 
-      note_id = note_id.to_i
+      return render json: { error: "Wrong format." }, status: :bad_request unless note_id.is_a?(Integer)
 
       begin
         note = Note.find(note_id)
@@ -209,6 +208,25 @@ module Api
           }
         }, status: :ok
       end
+    end
+
+    # POST /api/notes/validate
+    def validate
+      title = params[:title]
+      content = params[:content]
+
+      if title.length > 200
+        return error_response({ message: "The title cannot exceed 200 characters." }, :unprocessable_entity)
+      elsif content.length > 10000
+        return error_response({ message: "The content cannot exceed 10000 characters." }, :unprocessable_entity)
+      end
+
+      policy = NotePolicy.new(current_resource_owner, Note.new)
+      unless policy.create?
+        return error_response({ message: "Not authorized to create or update notes" }, :unauthorized)
+      end
+
+      render json: { status: 200, message: "Note input is valid." }, status: :ok
     end
 
     private
